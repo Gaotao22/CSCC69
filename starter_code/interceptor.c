@@ -352,6 +352,9 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 	}
 	table[syscall].f = sys_call_table[syscall];
 	if(cmd == 1){
+		if(current_uid() == 0){//check if the user is at the root
+			return -EPERM;
+		}
 		if(table[syscall].intercepted == 1){
 			return -EBUSY;
 		}
@@ -360,21 +363,45 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		sys_call_table[syscall] = interceptor;
 		set_addr_ro((unsigned long)sys_call_table);
 	}else if(cmd == 2){
+		if(current_uid() == 0){//check if the user is at the root
+			return -EPERM;
+		}
 		if(table[syscall].intercepted == 0){
 			return -EINVAL;	
 		}
 		set_addr_rw((unsigned long)sys_call_table);
-		sys_call_table[syscall] = table[syscall].f
+		sys_call_table[syscall] = table[syscall].f;
 		set_addr_ro((unsigned long)sys_call_table);
 		distroy_list(syscall);
-		table[syscall] = NULL;
+		table[syscall].intercepted = 0;
+		table[syscall].monitored = 0;
 	}else if(cmd == 3){
+		if(current->pid != 0){
+			if(pid == 0 || !check_pid_from_list(pid, current->pid)){
+				return -EPERM;
+			}
+		}
 		table[syscall].monitored = 1;
-		add_pid_sysc(pid, syscall);
+		if (pid == 0){
+			//add all running pids to the syscall
+		}else{
+			if(check_pid_monitored(syscall, pid)){
+				return -EBUSY;
+			}
+			add_pid_sysc(pid, syscall);
+		}
 	}else if(cmd == 4){
-		del_pid_sysc(pid, syscall);
+		if (table[syscall].intercepted == 0){
+			return -EINVAL;
+		}
+		if (table[syscall].monitored == 0){
+			return -EINVAL;
+		}
+		if(del_pid_sysc(pid, syscall) == -1){
+			return -EINVAL;
+		}
 		if (table[syscall].listcount == 0){
-			monitored = 0;
+			table[syscall].monitored = 0;
 		}
 
 	}
