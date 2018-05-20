@@ -374,7 +374,6 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		set_addr_ro((unsigned long)sys_call_table);
 		distroy_list(syscall);
 		table[syscall].intercepted = 0;
-		table[syscall].monitored = 0;
 	}else if(cmd == 3){
 		if(current->pid != 0){
 			if(pid == 0){
@@ -399,11 +398,13 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		if (table[syscall].monitored == 0){
 			return -EINVAL;
 		}
-		if(del_pid_sysc(pid, syscall) == -1){
-			return -EINVAL;
-		}
-		if (table[syscall].listcount == 0){
-			table[syscall].monitored = 0;
+		if (pid == 0){//delete all the pids monitored for this syscall
+			destroy_list(syscall);
+			
+		}else{
+			if (del_pid_sysc(pid, syscall) == -1){
+				return -EINVAL;
+			}
 		}
 
 	}
