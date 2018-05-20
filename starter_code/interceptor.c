@@ -377,8 +377,10 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		table[syscall].monitored = 0;
 	}else if(cmd == 3){
 		if(current->pid != 0){
-			if(pid == 0 || !check_pid_from_list(pid, current->pid)){
+			if(pid == 0){
 				return -EPERM;
+			}
+			if(check_pid_from_list(pid, current->pid) == 0){
 			}
 		}
 		table[syscall].monitored = 1;
