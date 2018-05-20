@@ -280,13 +280,13 @@ asmlinkage long interceptor(struct pt_regs reg) {
 	
 	//log the message if the syscall is intercepted and the process is monitored	
 	if (table[reg.ax].monitored == 1 && table[reg.ax].intercepted == 1){
-		if(check_pid_monitored(sysc, current->pid)){
-			log_macro(current->pid, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.bp);
+		if(check_pid_monitored(reg.ax, current->pid)){
+			log_message(current->pid, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di, reg.bp);
 			
 		}	
 		
-	}else if (table[reg.eax].monitored == 2 && table[reg.eax].intercepted == 1){
-		log_macro(current->pid, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.bp);
+	}else if (table[reg.ax].monitored == 2 && table[reg.ax].intercepted == 1){
+		log_message(current->pid, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di, reg.bp);
 		
 	}
 	
@@ -347,12 +347,12 @@ asmlinkage long interceptor(struct pt_regs reg) {
  *   you might be holding, before you exit the function (including error cases!).  
  */
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
-	if (syscall > NR_syscalls || syscall <= 0 || pid < 0 || pid_task(find_vpid(pid), PIDTYPE_PID) == NULL){
+	if (syscall > NR_syscalls || syscall <= 0 || pid < 0 || pid_task(find_vpid(pid), PIDTYPE_PID) == NULL || cmd < 1 || cmd > 4){
 		return -EINVAL;
 	}
 	table[syscall].f = sys_call_table[syscall];
-	if(cmd == 1){
-		if(current_uid() == 0){//check if the user is at the root
+	if(cmd == REQUEST_SYSCALL_INTERCEPT){
+		if(current_uid() != 0){//check if the user is at the root
 			return -EPERM;
 		}
 		if(table[syscall].intercepted == 1){
@@ -362,8 +362,8 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		set_addr_rw((unsigned long)sys_call_table);
 		sys_call_table[syscall] = interceptor;
 		set_addr_ro((unsigned long)sys_call_table);
-	}else if(cmd == 2){
-		if(current_uid() == 0){//check if the user is at the root
+	}else if(cmd == REQUEST_SYSCALL_RELEASE){
+		if(current_uid() != 0){//check if the user is at the root
 			return -EPERM;
 		}
 		if(table[syscall].intercepted == 0){
@@ -372,9 +372,9 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		set_addr_rw((unsigned long)sys_call_table);
 		sys_call_table[syscall] = table[syscall].f;
 		set_addr_ro((unsigned long)sys_call_table);
-		distroy_list(syscall);
+		destroy_list(syscall);
 		table[syscall].intercepted = 0;
-	}else if(cmd == 3){
+	}else if(cmd == REQUEST_START_MONITORING){
 		if(current->pid != 0){
 			if(pid == 0){
 				return -EPERM;
@@ -391,7 +391,7 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			}
 			add_pid_sysc(pid, syscall);
 		}
-	}else if(cmd == 4){
+	}else if(cmd == REQUEST_STOP_MONITORING){
 		if (table[syscall].intercepted == 0){
 			return -EINVAL;
 		}
@@ -414,7 +414,7 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 
 
 
-
+	
 	return 0;
 }
 
@@ -445,6 +445,8 @@ static int init_function(void) {
 	
 	orig_exit_group = sys_call_table[__NR_exit_group];
 	
+	
+		
 	//modify the syscall
 	set_addr_rw((unsigned long)sys_call_table);
 	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
@@ -452,7 +454,14 @@ static int init_function(void) {
 	
 	set_addr_ro((unsigned long)sys_call_table);
 
-
+	//Initialize a list
+	int s = 0;
+	for (s = 0; s < NR_syscalls; s++){
+		INIT_LIST_HEAD (&(table[s].my_list));
+		table[s].monitored = 0;
+		table[s].intercepted = 0;
+		table[s].listcount = 0;
+	}	
 
 
 
@@ -473,12 +482,21 @@ static int init_function(void) {
 static void exit_function(void)
 {        
 
+	//Destroy the list	
+	int s = 0;
+	for (s = 1; s < NR_syscalls; s++){
+		destroy_list (s);
+	}
+	
+	//Set the syscall back to the original values
 	set_addr_rw((unsigned long)sys_call_table);
 	sys_call_table[MY_CUSTOM_SYSCALL] = orig_custom_syscall;
 	sys_call_table[__NR_exit_group] = orig_exit_group;
 	
 	set_addr_ro((unsigned long)sys_call_table);
-
+	
+		
+	
 
 
 
