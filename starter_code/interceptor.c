@@ -385,6 +385,9 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		table[syscall].monitored = 1;
 		if (pid == 0){
 			//add all running pids to the syscall
+			table[syscall].monitored = 2;
+			add_pid_sysc(pid, syscall);
+			add_pid_sysc(current->pid, syscall);
 		}else{
 			if(check_pid_monitored(syscall, pid)){
 				return -EBUSY;
