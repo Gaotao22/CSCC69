@@ -385,7 +385,7 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		table[syscall].intercepted = 0;
 	}else if(cmd == REQUEST_START_MONITORING){
 		
-		if(current->pid != 0){
+		if(current_uid() != 0){
 			if(pid == 0){
 				return -EPERM;
 			}else if(check_pid_from_list(pid, current->pid) != 0){
@@ -418,7 +418,7 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		
 	}else if(cmd == REQUEST_STOP_MONITORING){
 	
-		if(current->pid != 0){
+		if(current_uid() != 0){
 			if(pid == 0){
 				return -EPERM;
 			}else if(check_pid_from_list(pid, current->pid) != 0){
@@ -514,14 +514,14 @@ static int init_function(void) {
 	spin_unlock(&calltable_lock);
 	//Initialize a list
 	int s = 0;
-	//spin_lock(&pidlist_lock);
+	spin_lock(&pidlist_lock);
 	for (s = 0; s < NR_syscalls; s++){
 		INIT_LIST_HEAD (&(table[s].my_list));
 		table[s].monitored = 0;
 		table[s].intercepted = 0;
 		table[s].listcount = 0;
 	}
-	//spin_unlock(&pidlist_lock);	
+	spin_unlock(&pidlist_lock);	
 
 
 
@@ -544,11 +544,11 @@ static void exit_function(void)
 
 	//Destroy the list	
 	int s = 0;
-	//spin_lock(&pidlist_lock);
+	spin_lock(&pidlist_lock);
 	for (s = 1; s < NR_syscalls; s++){
 		destroy_list (s);
 	}
-	//spin_unlock(&pidlist_lock);
+	spin_unlock(&pidlist_lock);
 	
 	//Set the syscall back to the original values
 	spin_lock(&calltable_lock);
