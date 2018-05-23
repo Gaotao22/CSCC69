@@ -349,7 +349,7 @@ asmlinkage long interceptor(struct pt_regs reg) {
  *   you might be holding, before you exit the function (including error cases!).  
  */
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
-	if (syscall > NR_syscalls || syscall <= 0 || pid < 0 || pid_task(find_vpid(pid), PIDTYPE_PID) == NULL || cmd < 1 || cmd > 4){
+	if (syscall > NR_syscalls || syscall <= 0 || pid < 0 || (pid_task(find_vpid(pid), PIDTYPE_PID) == NULL && pid !=0) || cmd < 1 || cmd > 4){
 		return -EINVAL;
 	}
 	//table[syscall].f = sys_call_table[syscall];
@@ -384,6 +384,7 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		spin_unlock(&pidlist_lock);
 		table[syscall].intercepted = 0;
 	}else if(cmd == REQUEST_START_MONITORING){
+		
 		if(current->pid != 0){
 			if(pid == 0){
 				return -EPERM;
@@ -391,12 +392,16 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 				return -EPERM;
 			}
 		}
-		spin_lock(&pidlist_lock);
+		
 		if (pid == 0){
 			//add all running pids to the syscall
+			spin_lock(&pidlist_lock);
 			table[syscall].monitored = 2;
+			spin_unlock(&pidlist_lock);
+			
 			//add_pid_sysc(current->pid, syscall);
 		}else{
+			spin_lock(&pidlist_lock);			
 			if(check_pid_monitored(syscall, pid)){
 				spin_unlock(&pidlist_lock);
 				return -EBUSY;
@@ -408,9 +413,11 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 				spin_unlock(&pidlist_lock);
 				return -ENOMEM;;
 			}
+			spin_unlock(&pidlist_lock);
 		}
-		spin_unlock(&pidlist_lock);
+		
 	}else if(cmd == REQUEST_STOP_MONITORING){
+	
 		if(current->pid != 0){
 			if(pid == 0){
 				return -EPERM;
@@ -425,27 +432,34 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			return -EINVAL;
 		}
 		
-		spin_lock(&pidlist_lock);
+		
 		if (pid == 0){//delete all the pids monitored for this syscall
+			spin_lock(&pidlist_lock);
 			destroy_list(syscall);
+			spin_unlock(&pidlist_lock);
+			
 			
 		}else{
 			if (table[syscall].monitored == 2){
 				table[syscall].monitored = 1;
 				if(check_pid_monitored(syscall, pid)){
+					spin_lock(&pidlist_lock);
 					if (del_pid_sysc(pid, syscall) == -1){
 						spin_unlock(&pidlist_lock);
 						return -EINVAL;
-					}	
+					}
+					spin_unlock(&pidlist_lock);	
 				}			
 			}else{			
+                                spin_lock(&pidlist_lock);				
 				if (del_pid_sysc(pid, syscall) == -1){
 					spin_unlock(&pidlist_lock);
 					return -EINVAL;
 				}
+				spin_unlock(&pidlist_lock);
 			}
 		}
-		spin_unlock(&pidlist_lock);
+		
 
 	}
 
@@ -500,14 +514,14 @@ static int init_function(void) {
 	spin_unlock(&calltable_lock);
 	//Initialize a list
 	int s = 0;
-	spin_lock(&pidlist_lock);
+	//spin_lock(&pidlist_lock);
 	for (s = 0; s < NR_syscalls; s++){
 		INIT_LIST_HEAD (&(table[s].my_list));
 		table[s].monitored = 0;
 		table[s].intercepted = 0;
 		table[s].listcount = 0;
 	}
-	spin_unlock(&pidlist_lock);	
+	//spin_unlock(&pidlist_lock);	
 
 
 
@@ -530,11 +544,11 @@ static void exit_function(void)
 
 	//Destroy the list	
 	int s = 0;
-	spin_lock(&pidlist_lock);
+	//spin_lock(&pidlist_lock);
 	for (s = 1; s < NR_syscalls; s++){
 		destroy_list (s);
 	}
-	spin_unlock(&pidlist_lock);
+	//spin_unlock(&pidlist_lock);
 	
 	//Set the syscall back to the original values
 	spin_lock(&calltable_lock);
